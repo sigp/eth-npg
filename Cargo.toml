@@ -1,0 +1,19 @@
+[package]
+name = "npg"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+lighthouse_network = { git = "https://github.com/sigp/lighthouse", branch = "unstable" }
+types = { git = "https://github.com/sigp/lighthouse", branch = "unstable" }
+
+
+[patch]
+[patch.crates-io]
+eth2_ssz = { git = "https://github.com/sigp/lighthouse", branch = "unstable" }
+eth2_ssz_types = { git = "https://github.com/sigp/lighthouse", branch = "unstable" }
+eth2_hashing = { git = "https://github.com/sigp/lighthouse", branch = "unstable" }
+tree_hash = { git = "https://github.com/sigp/lighthouse", branch = "unstable" }
+eth2_serde_utils = { git = "https://github.com/sigp/lighthouse", branch = "unstable" }
