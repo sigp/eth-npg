@@ -1,5 +1,5 @@
 use std::{
-    collections::VecDeque, convert::TryInto, marker::PhantomData, pin::Pin, task::Poll,
+    collections::VecDeque, convert::TryInto, marker::PhantomData, pin::Pin, sync::Arc, task::Poll,
     time::Duration,
 };
 
@@ -9,7 +9,11 @@ use strum::{EnumIter, IntoEnumIterator};
 use tokio::time::{sleep, sleep_until, Sleep};
 use types::{
     eth_spec::{EthSpec, MainnetEthSpec},
-    ChainSpec, Slot,
+    Attestation, AttesterSlashing, BeaconBlockAltair, BeaconBlockBodyAltair, BeaconBlockBodyMerge,
+    BeaconBlockMerge, ChainSpec, ExecutionPayload, FullPayload, Hash256, ProposerSlashing,
+    Signature, SignedAggregateAndProof, SignedBeaconBlock, SignedBeaconBlockMerge,
+    SignedContributionAndProof, SignedVoluntaryExit, Slot, SubnetId, SyncCommitteeMessage,
+    SyncSubnetId,
 };
 
 #[cfg(test)]
@@ -36,7 +40,6 @@ pub struct Generator<S, M> {
     next_slot: Pin<Box<Sleep>>,
 }
 
-// TODO: relation between EthSpec and SlotClock?
 impl<S: SlotClock> Generator<S, String> {
     pub fn new(
         genesis_slot: Slot,
@@ -65,7 +68,6 @@ impl<S: SlotClock> Generator<S, String> {
         }
     }
 
-    // self? any state needed to get correct msg topic distribution?
     pub fn get_msg(&self, current_slot: Slot, kind: MsgType) -> Option<String> {
         match kind {
             MsgType::BeaconBlock => {
