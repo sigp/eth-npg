@@ -91,17 +91,16 @@ impl<S: SlotClock> Generator<S, String> {
     }
 
     fn queue_slot_msgs(&mut self, current_slot: Slot) {
-        let mut msg_queued = false;
         for msg_type in MsgType::iter() {
             if let Some(msg) = self.get_msg(current_slot, msg_type) {
-                tracing::info!("[{current_slot}] Queueing messsage: {msg}");
                 self.queued_messages.push_back(msg);
-                msg_queued = true;
             }
         }
-        if !msg_queued {
-            tracing::info!("No message for current slot {current_slot}");
-        }
+        tracing::info!(
+            "[{current_slot}] Messages: len:{} {:?}",
+            self.queued_messages.len(),
+            self.queued_messages
+        );
     }
 }
 
