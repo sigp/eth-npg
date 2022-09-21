@@ -70,10 +70,10 @@ impl<S: SlotClock> Generator<S, MT> {
                 .unwrap_or(true),
             "validator ids should go up to total_validators - 1"
         );
-        // assert!(
-        //     total_validators >= 64 * 16,
-        //     "no idea what happens otherwise"
-        // );
+        assert!(
+            total_validators >= subnets * TARGET_AGGREGATORS,
+            "not enough validators to reach the target aggregators"
+        );
         let slot_clock = S::new(genesis_slot, genesis_duration, slot_duration);
         let duration_to_next_slot = slot_clock
             .duration_to_next_slot()

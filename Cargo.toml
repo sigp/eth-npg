@@ -13,6 +13,8 @@ futures = "0.3.24"
 strum = { version = "0.24", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.2", features = [ "env-filter", "fmt" ] }
+quickcheck = "1"
+quickcheck_macros = "1"
 
 [patch]
 [patch.crates-io]
