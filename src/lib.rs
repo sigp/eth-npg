@@ -42,6 +42,7 @@ pub struct Generator<S, M> {
     slot_clock: S,
     slots_per_epoch: u64,
     validators: HashSet<u64>,
+    subnets: u64,
     total_validators: u64,
     queued_messages: VecDeque<M>,
     next_slot: Pin<Box<Sleep>>,
@@ -49,12 +50,15 @@ pub struct Generator<S, M> {
 
 type MT = String;
 
+const TARGET_AGGREGATORS: u64 = 16;
+
 impl<S: SlotClock> Generator<S, MT> {
     pub fn new(
         genesis_slot: Slot,
         genesis_duration: Duration,
         slots_per_epoch: u64,
         slot_duration: Duration,
+        subnets: u64,
         validators: HashSet<u64>,
         total_validators: u64,
     ) -> Self {
@@ -66,10 +70,10 @@ impl<S: SlotClock> Generator<S, MT> {
                 .unwrap_or(true),
             "validator ids should go up to total_validators - 1"
         );
-        assert!(
-            total_validators >= 64 * 16,
-            "no idea what happens otherwise"
-        );
+        // assert!(
+        //     total_validators >= 64 * 16,
+        //     "no idea what happens otherwise"
+        // );
         let slot_clock = S::new(genesis_slot, genesis_duration, slot_duration);
         let duration_to_next_slot = slot_clock
             .duration_to_next_slot()
@@ -78,6 +82,7 @@ impl<S: SlotClock> Generator<S, MT> {
             slot_clock,
             slots_per_epoch,
             validators,
+            subnets,
             total_validators,
             queued_messages: VecDeque::new(),
             next_slot: Box::pin(sleep(duration_to_next_slot)),
@@ -104,16 +109,32 @@ impl<S: SlotClock> Generator<S, MT> {
                         // shake the val id using the epoch
                         let shaked_val_id = val_id.overflowing_add(epoch).0;
                         // assign to one of the committees
-                        let committee = shaked_val_id % 64;
+                        let committee = shaked_val_id % self.subnets;
                         // get an id on the range of existing validator ids and use it to get an id
                         // inside the committee
-                        let idx_in_commitee = (shaked_val_id % self.total_validators) / 64;
-                        let is_aggregator = idx_in_commitee / 16 == 0;
+                        let idx_in_commitee =
+                            (shaked_val_id % self.total_validators) / self.subnets;
+                        let is_aggregator = idx_in_commitee / TARGET_AGGREGATORS == 0;
                         is_aggregator.then(|| format!("val {val_id} aggregating on {committee}"))
                     })
                     .collect()
             }
-            // MsgType::Attestation => todo!(),
+            MsgType::Attestation => {
+                let epoch = current_slot.epoch(self.slots_per_epoch).as_u64();
+                self.validators
+                    .iter()
+                    .filter_map(|val_id| {
+                        // shake the val id using the epoch
+                        let shaked_val_id = val_id.overflowing_add(epoch).0;
+                        // assign to one of the committees
+                        let committee = shaked_val_id % self.subnets;
+                        // assign attesters using the slot
+                        let is_attester =
+                            val_id.overflowing_add(slot).0 % self.slots_per_epoch == 0;
+                        is_attester.then(|| format!("val {val_id} attesting on {committee}"))
+                    })
+                    .collect()
+            }
             // MsgType::VoluntaryExit => todo!(),
             // MsgType::ProposerSlashing => todo!(),
             // MsgType::AttesterSlashing => todo!(),
