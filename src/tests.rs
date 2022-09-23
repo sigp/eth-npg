@@ -36,6 +36,7 @@ fn test_expected_message_counts(
     quickcheck::TestResult::passed()
 }
 
+/// Verifies that the right amount of distinct messages are generated.
 fn test_expected_message_counts_fn(
     test_slot: u64,
     slots_per_epoch: u64,
@@ -52,7 +53,7 @@ fn test_expected_message_counts_fn(
     // Test on a centralized network
     let all_validators = (0..total_validators).into_iter().collect::<HashSet<_>>();
 
-    let g = Generator::<SystemTimeSlotClock, String>::new(
+    let g = Generator::<SystemTimeSlotClock, Message>::new(
         Slot::new(0),
         Duration::ZERO,
         slots_per_epoch,
@@ -65,28 +66,39 @@ fn test_expected_message_counts_fn(
     // Test the number of expected blocks.
     let blocks = g.get_msg(test_slot, MsgType::BeaconBlock);
     assert_eq!(blocks.len(), expected_blocks);
+    let unique_blocks = HashSet::<Message>::from_iter(blocks.into_iter());
+    assert_eq!(unique_blocks.len(), expected_blocks);
 
-    // Test the number of expected aggregators per slot.
-    let aggregators = g.get_msg(test_slot, MsgType::AggregateAndProofAttestation);
-    assert_eq!(aggregators.len(), expected_aggregates);
+    // Test the number of expected aggregates per slot.
+    let aggregates = g.get_msg(test_slot, MsgType::AggregateAndProofAttestation);
+    assert_eq!(aggregates.len(), expected_aggregates);
+    let unique_aggregates = HashSet::<Message>::from_iter(aggregates.into_iter());
+    assert_eq!(unique_aggregates.len(), expected_aggregates);
 
     // Test the number of attestations per slot and epoch.
     let epoch = test_slot.epoch(slots_per_epoch);
     let slot_iter = epoch.slot_iter(slots_per_epoch);
 
-    let mut total_attestations = 0;
+    let mut total_attestations = HashSet::with_capacity(total_validators as usize);
     for current_slot in slot_iter {
-        let slot_attesters = g.get_msg(current_slot, MsgType::Attestation);
+        let slot_attestations = g.get_msg(current_slot, MsgType::Attestation);
         assert!(
-            slot_attesters
+            slot_attestations
                 .len()
                 .abs_diff(expected_attestations_per_slot)
-                <= 1
-        ); // tolerance
-        total_attestations += slot_attesters.len();
+                <= 1 // tolerance
+        );
+        let unique_slot_attestations = HashSet::<Message>::from_iter(slot_attestations.into_iter());
+        assert!(
+            unique_slot_attestations
+                .len()
+                .abs_diff(expected_attestations_per_slot)
+                <= 1 // tolerance
+        );
+        total_attestations.extend(unique_slot_attestations.into_iter());
     }
 
-    assert_eq!(total_attestations, total_validators as usize);
+    assert_eq!(total_attestations.len(), total_validators as usize);
 }
 
 #[tokio::test]

@@ -48,9 +48,24 @@ pub struct Generator<S, M> {
     next_slot: Pin<Box<Sleep>>,
 }
 
-type MT = String;
+type MT = Message;
+
+pub type ValId = u64;
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub enum Message {
+    BeaconBlock { proposer: ValId },
+    AggregateAndProofAttestation { aggregator: ValId, committee: u64 },
+    Attestation { attester: ValId, committee: u64 },
+    VoluntaryExit,
+    ProposerSlashing,
+    AttesterSlashing,
+    SignedContributionAndProof,
+    SyncCommitteeMessage,
+}
 
 const TARGET_AGGREGATORS: u64 = 16;
+const EPOCHS_PER_SYNC_COMMITTEE_PERIOD: u64 = 256;
 
 impl<S: SlotClock> Generator<S, MT> {
     pub fn new(
@@ -96,7 +111,7 @@ impl<S: SlotClock> Generator<S, MT> {
                 // return a block if we have the validator that should send a block
                 let proposer = slot % self.total_validators;
                 if self.validators.contains(&proposer) {
-                    vec![format!("{kind}, {current_slot} {proposer}")]
+                    vec![Message::BeaconBlock { proposer }]
                 } else {
                     vec![]
                 }
@@ -115,7 +130,10 @@ impl<S: SlotClock> Generator<S, MT> {
                         let idx_in_commitee =
                             (shaked_val_id % self.total_validators) / self.subnets;
                         let is_aggregator = idx_in_commitee / TARGET_AGGREGATORS == 0;
-                        is_aggregator.then(|| format!("val {val_id} aggregating on {committee}"))
+                        is_aggregator.then(|| Message::AggregateAndProofAttestation {
+                            aggregator: *val_id,
+                            committee,
+                        })
                     })
                     .collect()
             }
@@ -131,19 +149,35 @@ impl<S: SlotClock> Generator<S, MT> {
                         // assign attesters using the slot
                         let is_attester =
                             val_id.overflowing_add(slot).0 % self.slots_per_epoch == 0;
-                        is_attester.then(|| format!("val {val_id} attesting on {committee}"))
+                        is_attester.then(|| Message::Attestation {
+                            attester: *val_id,
+                            committee,
+                        })
                     })
                     .collect()
             }
-            // MsgType::VoluntaryExit => todo!(),
-            // MsgType::ProposerSlashing => todo!(),
-            // MsgType::AttesterSlashing => todo!(),
+            MsgType::VoluntaryExit | MsgType::ProposerSlashing | MsgType::AttesterSlashing => {
+                // ignore them
+                vec![]
+            }
             // MsgType::SignedContributionAndProof => todo!(),
-            // MsgType::SyncCommitteeMessage => todo!(),
+            MsgType::SyncCommitteeMessage => {
+                // let epoch = current_slot.epoch(self.slots_per_epoch).as_u64();
+                // let sync_committee_period = epoch / EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
+                self.validators
+                    .iter()
+                    .filter_map(|_val_id| {
+                        // shake the val id using the sync_committee_period
+                        // let shaked_val_id = val_id.overflowing_add(sync_committee_period).0;
+
+                        Some(Message::SyncCommitteeMessage)
+                    })
+                    .collect()
+            }
             _ => {
                 let kind_: u64 = (kind as usize).try_into().unwrap();
                 if current_slot % 8 == kind_ {
-                    vec![format!("{kind}, {}", current_slot.as_u64())]
+                    vec![Message::SignedContributionAndProof]
                 } else {
                     vec![]
                 }
