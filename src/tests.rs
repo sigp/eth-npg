@@ -48,6 +48,10 @@ fn test_expected_message_counts_fn(
     let expected_attestations_per_epoch = params.total_validators() as usize;
     let expected_attestations_per_slot: usize =
         expected_attestations_per_epoch / params.slots_per_epoch() as usize;
+    let expected_sync_committee_msgs =
+        (params.sync_committee_subnets() * params.sync_subnet_size()) as usize;
+    let expected_sync_aggregates =
+        (params.sync_committee_subnets() * params.target_aggregators()) as usize;
 
     // Setup the network, giving the `node_count` nodes each a random number of validators from the
     // total pool.
@@ -82,8 +86,15 @@ fn test_expected_message_counts_fn(
         assert!(count_difference <= 1);
         total_attestations.extend(slot_attestations.into_iter());
     }
-
     assert_eq!(total_attestations.len(), expected_attestations_per_epoch);
+
+    // Test the number of sync committee messages per slot.
+    let sync_committee_msgs = get_msgs(&nodes, MsgType::SyncCommitteeMessage, test_slot);
+    assert_eq!(sync_committee_msgs.len(), expected_sync_committee_msgs);
+
+    // Test the number of sync committee aggregates.
+    let sync_committee_msgs = get_msgs(&nodes, MsgType::SignedContributionAndProof, test_slot);
+    assert_eq!(sync_committee_msgs.len(), expected_sync_aggregates);
 }
 
 /// Creates a "network" consisting of `node_count` nodes with approximately

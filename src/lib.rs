@@ -1,6 +1,5 @@
 use std::{
     collections::{HashSet, VecDeque},
-    convert::TryInto,
     pin::Pin,
     task::Poll,
 };
@@ -57,7 +56,7 @@ pub enum Message {
     BeaconBlock { proposer: ValId },
     AggregateAndProofAttestation { aggregator: ValId, committee: u64 },
     Attestation { attester: ValId, committee: u64 },
-    SignedContributionAndProof,
+    SignedContributionAndProof { validator: ValId, committee: u64 },
     SyncCommitteeMessage { validator: ValId, committee: u64 },
 }
 
@@ -133,22 +132,46 @@ impl Generator {
                         let sync_committee_size =
                             self.sync_subnet_size * self.sync_committee_subnets;
                         let in_commitee = shaked_val_id / sync_committee_size == 0;
-                        in_commitee
-                            .then(|| shaked_val_id % self.sync_committee_subnets)
-                            .map(|committee| Message::SyncCommitteeMessage {
+                        in_commitee.then(|| {
+                            let idx_in_commitee = shaked_val_id % sync_committee_size;
+                            let committee = idx_in_commitee % self.sync_committee_subnets;
+                            Message::SyncCommitteeMessage {
                                 validator: *val_id,
                                 committee,
-                            })
+                            }
+                        })
                     })
                     .collect()
             }
             MsgType::SignedContributionAndProof => {
-                let kind_: u64 = (kind as usize).try_into().unwrap();
-                if current_slot % 8 == kind_ {
-                    vec![Message::SignedContributionAndProof]
-                } else {
-                    vec![]
-                }
+                let epoch = current_slot.epoch(self.slots_per_epoch).as_u64();
+                let sync_committee_period = epoch / EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
+                self.validators
+                    .iter()
+                    .filter_map(|val_id| {
+                        // shake the val id using the sync_committee_period and move it back to
+                        // the validator ids range.
+                        let shaked_val_id =
+                            val_id.overflowing_add(sync_committee_period).0 % self.total_validators;
+                        let sync_committee_size =
+                            self.sync_subnet_size * self.sync_committee_subnets;
+                        let in_commitee = shaked_val_id / sync_committee_size == 0;
+                        if !in_commitee {
+                            return None;
+                        }
+                        let idx_in_commitee = shaked_val_id % sync_committee_size;
+                        let committee = idx_in_commitee % self.sync_committee_subnets;
+                        let idx_in_subcommittee = idx_in_commitee / self.sync_committee_subnets;
+                        let is_aggregator = (idx_in_subcommittee.overflowing_add(slot).0
+                            % self.sync_committee_subnets)
+                            / self.target_aggregators
+                            == 0;
+                        is_aggregator.then_some(Message::SignedContributionAndProof {
+                            validator: *val_id,
+                            committee,
+                        })
+                    })
+                    .collect()
             }
         }
     }
