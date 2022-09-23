@@ -123,8 +123,8 @@ fn setup_network(
     total_validators: usize,
     slots_per_epoch: u64,
     subnets: u64,
-) -> Vec<Generator<SystemTimeSlotClock, Message>> {
-    let mut nodes: Vec<Generator<SystemTimeSlotClock, Message>> = Vec::with_capacity(node_count);
+) -> Vec<Generator> {
+    let mut nodes: Vec<Generator> = Vec::with_capacity(node_count);
 
     // Create the list of all validator ids and shuffle them.
     let mut all_validators = (0..total_validators as u64).into_iter().collect::<Vec<_>>();

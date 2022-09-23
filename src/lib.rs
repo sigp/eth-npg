@@ -1,26 +1,15 @@
 use std::{
     collections::{HashSet, VecDeque},
     convert::TryInto,
-    fmt::format,
-    marker::PhantomData,
     pin::Pin,
-    sync::Arc,
     task::Poll,
     time::Duration,
 };
 
 use futures::{stream::Stream, Future, FutureExt};
-use slot_clock::{SlotClock, SystemTimeSlotClock};
+use slot_clock::{Slot, SlotClock, SystemTimeSlotClock};
 use strum::{EnumIter, IntoEnumIterator};
-use tokio::time::{sleep, sleep_until, Sleep};
-use types::{
-    eth_spec::{EthSpec, MainnetEthSpec},
-    Attestation, AttesterSlashing, BeaconBlockAltair, BeaconBlockBodyAltair, BeaconBlockBodyMerge,
-    BeaconBlockMerge, ChainSpec, ExecutionPayload, FullPayload, Hash256, ProposerSlashing,
-    Signature, SignedAggregateAndProof, SignedBeaconBlock, SignedBeaconBlockMerge,
-    SignedContributionAndProof, SignedVoluntaryExit, Slot, SubnetId, SyncCommitteeMessage,
-    SyncSubnetId,
-};
+use tokio::time::{sleep, Sleep};
 
 #[cfg(test)]
 mod tests;
@@ -38,13 +27,13 @@ pub enum MsgType {
     SyncCommitteeMessage,
 }
 
-pub struct Generator<S, M> {
-    slot_clock: S,
+pub struct Generator {
+    slot_clock: SystemTimeSlotClock,
     slots_per_epoch: u64,
     validators: HashSet<u64>,
     subnets: u64,
     total_validators: u64,
-    queued_messages: VecDeque<M>,
+    queued_messages: VecDeque<Message>,
     next_slot: Pin<Box<Sleep>>,
 }
 
@@ -67,8 +56,7 @@ pub enum Message {
 const TARGET_AGGREGATORS: u64 = 16;
 const EPOCHS_PER_SYNC_COMMITTEE_PERIOD: u64 = 256;
 
-
-impl<S: SlotClock> Generator<S, MT> {
+impl Generator {
     pub fn new(
         genesis_slot: Slot,
         genesis_duration: Duration,
@@ -90,7 +78,7 @@ impl<S: SlotClock> Generator<S, MT> {
             total_validators >= subnets * TARGET_AGGREGATORS,
             "not enough validators to reach the target aggregators"
         );
-        let slot_clock = S::new(genesis_slot, genesis_duration, slot_duration);
+        let slot_clock = SystemTimeSlotClock::new(genesis_slot, genesis_duration, slot_duration);
         let duration_to_next_slot = slot_clock
             .duration_to_next_slot()
             .expect("nothing ever goes wrong");
@@ -201,8 +189,8 @@ impl<S: SlotClock> Generator<S, MT> {
     }
 }
 
-impl<S: SlotClock + Unpin> Stream for Generator<S, MT> {
-    type Item = MT;
+impl Stream for Generator {
+    type Item = Message;
 
     fn poll_next(
         mut self: Pin<&mut Self>,
