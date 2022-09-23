@@ -61,11 +61,12 @@ pub enum Message {
     ProposerSlashing,
     AttesterSlashing,
     SignedContributionAndProof,
-    SyncCommitteeMessage,
+    SyncCommitteeMessage { validator: ValId, committee: u64 },
 }
 
 const TARGET_AGGREGATORS: u64 = 16;
 const EPOCHS_PER_SYNC_COMMITTEE_PERIOD: u64 = 256;
+
 
 impl<S: SlotClock> Generator<S, MT> {
     pub fn new(
@@ -162,15 +163,22 @@ impl<S: SlotClock> Generator<S, MT> {
             }
             // MsgType::SignedContributionAndProof => todo!(),
             MsgType::SyncCommitteeMessage => {
-                // let epoch = current_slot.epoch(self.slots_per_epoch).as_u64();
-                // let sync_committee_period = epoch / EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
+                let epoch = current_slot.epoch(self.slots_per_epoch).as_u64();
+                let sync_committee_period = epoch / EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
                 self.validators
                     .iter()
-                    .filter_map(|_val_id| {
-                        // shake the val id using the sync_committee_period
-                        // let shaked_val_id = val_id.overflowing_add(sync_committee_period).0;
-
-                        Some(Message::SyncCommitteeMessage)
+                    .filter_map(|val_id| {
+                        // shake the val id using the sync_committee_period and move it back to
+                        // the validator ids range.
+                        let shaked_val_id =
+                            val_id.overflowing_add(sync_committee_period).0 % self.total_validators;
+                        let in_commitee = shaked_val_id / 512 == 0;
+                        in_commitee.then(|| shaked_val_id % 4).map(|committee| {
+                            Message::SyncCommitteeMessage {
+                                validator: *val_id,
+                                committee,
+                            }
+                        })
                     })
                     .collect()
             }
@@ -186,42 +194,35 @@ impl<S: SlotClock> Generator<S, MT> {
     }
 
     fn queue_slot_msgs(&mut self, current_slot: Slot) {
-        //     for msg_type in MsgType::iter() {
-        //         if let Some(msg) = self.get_msg(current_slot, msg_type) {
-        //             self.queued_messages.push_back(msg);
-        //         }
-        //     }
-        //     tracing::info!(
-        //         "[{current_slot}] Messages: len:{} {:?}",
-        //         self.queued_messages.len(),
-        //         self.queued_messages
-        //     );
+        for msg_type in MsgType::iter() {
+            let msgs = self.get_msg(current_slot, msg_type);
+            self.queued_messages.extend(msgs);
+        }
     }
 }
 
-// impl<S: SlotClock + Unpin> Stream for Generator<S, MT> {
-//     type Item = MT;
-//
-//     fn poll_next(
-//         mut self: Pin<&mut Self>,
-//         cx: &mut std::task::Context<'_>,
-//     ) -> Poll<Option<Self::Item>> {
-//         // If there were any messages remaining from the current slot, return them.
-//         if let Some(msg) = self.queued_messages.pop_front() {
-//             return Poll::Ready(Some(msg));
-//         }
-//
-//         if self.next_slot.as_mut().poll(cx).is_ready() {
-//             let current_slot = self.slot_clock.now().unwrap();
-//             self.queue_slot_msgs(current_slot);
-//
-//             let duration_to_next_slot = self.slot_clock.duration_to_next_slot().unwrap();
-//             tracing::debug!("Time to next slot {duration_to_next_slot:?}");
-//             self.next_slot = Box::pin(sleep(duration_to_next_slot));
-//             // We either have messages to return or need to poll the sleep
-//             cx.waker().wake_by_ref();
-//         }
-//
-//         Poll::Pending
-//     }
-// }
+impl<S: SlotClock + Unpin> Stream for Generator<S, MT> {
+    type Item = MT;
+
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        // If there were any messages remaining from the current slot, return them.
+        if let Some(msg) = self.queued_messages.pop_front() {
+            return Poll::Ready(Some(msg));
+        }
+
+        if self.next_slot.as_mut().poll(cx).is_ready() {
+            let current_slot = self.slot_clock.now().unwrap();
+            self.queue_slot_msgs(current_slot);
+
+            let duration_to_next_slot = self.slot_clock.duration_to_next_slot().unwrap();
+            self.next_slot = Box::pin(sleep(duration_to_next_slot));
+            // We either have messages to return or need to poll the sleep
+            cx.waker().wake_by_ref();
+        }
+
+        Poll::Pending
+    }
+}
