@@ -107,10 +107,10 @@ fn setup_network(node_count: usize, generator_params: builder::GeneratorParams) 
     let mut all_validators = (0..total_validators).into_iter().collect::<Vec<_>>();
     all_validators.shuffle(&mut rand::thread_rng());
     let per_node_vals = (total_validators as usize) / node_count;
-    let mut all_validators = all_validators.chunks(per_node_vals);
+    let all_validators = all_validators.chunks(per_node_vals);
 
     let mut vals = 0;
-    while let Some(node_validators) = all_validators.next() {
+    for node_validators in all_validators {
         // get the validators for this node.
         let node_validators = HashSet::from_iter(node_validators.iter().copied());
         vals += node_validators.len();

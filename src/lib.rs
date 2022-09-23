@@ -93,7 +93,7 @@ impl Generator {
                         let idx_in_commitee =
                             (shaked_val_id % self.total_validators) / self.attestation_subnets;
                         let is_aggregator = idx_in_commitee / self.target_aggregators == 0;
-                        is_aggregator.then(|| Message::AggregateAndProofAttestation {
+                        is_aggregator.then_some(Message::AggregateAndProofAttestation {
                             aggregator: *val_id,
                             committee,
                         })
@@ -112,7 +112,7 @@ impl Generator {
                         // assign attesters using the slot
                         let is_attester =
                             val_id.overflowing_add(slot).0 % self.slots_per_epoch == 0;
-                        is_attester.then(|| Message::Attestation {
+                        is_attester.then_some(Message::Attestation {
                             attester: *val_id,
                             committee,
                         })
