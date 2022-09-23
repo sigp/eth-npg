@@ -116,7 +116,7 @@ fn test_expected_message_counts_fn(
     assert_eq!(total_attestations.len(), total_validators as usize);
 }
 
-/// Creates a "network" consisting of `node_count` with approximately
+/// Creates a "network" consisting of `node_count` nodes with approximately
 /// `total_validators`/`node_count` randomized validators.
 fn setup_network(
     node_count: usize,
