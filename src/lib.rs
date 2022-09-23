@@ -3,14 +3,14 @@ use std::{
     convert::TryInto,
     pin::Pin,
     task::Poll,
-    time::Duration,
 };
 
-use futures::{stream::Stream, Future, FutureExt};
+use futures::{stream::Stream, Future};
 use slot_clock::{Slot, SlotClock, SystemTimeSlotClock};
 use strum::{EnumIter, IntoEnumIterator};
 use tokio::time::{sleep, Sleep};
 
+mod builder;
 #[cfg(test)]
 mod tests;
 
@@ -20,20 +20,31 @@ pub enum MsgType {
     BeaconBlock,
     AggregateAndProofAttestation,
     Attestation,
-    VoluntaryExit,
-    ProposerSlashing,
-    AttesterSlashing,
     SignedContributionAndProof,
     SyncCommitteeMessage,
 }
 
 pub struct Generator {
+    /// Slot clock based on system time.
     slot_clock: SystemTimeSlotClock,
+    /// Epoch definition.
     slots_per_epoch: u64,
-    validators: HashSet<u64>,
-    subnets: u64,
+    /// Number of attestation subnets to split validators.
+    attestation_subnets: u64,
+    /// Number of validators to include in each sync subnet.
+    sync_subnet_size: u64,
+    /// Number of subcommittees to split members of the sync committee.
+    sync_committee_subnets: u64,
+    /// Number of validators to designate as aggregators in the sync committee and attestation
+    /// subnets.
+    target_aggregators: u64,
+    /// Number of validators in the network.
     total_validators: u64,
+    /// Validator managed by this node.
+    validators: HashSet<u64>,
+    /// Messages pending to be returned.
     queued_messages: VecDeque<Message>,
+    /// Duration to the next slot.
     next_slot: Pin<Box<Sleep>>,
 }
 
@@ -46,51 +57,15 @@ pub enum Message {
     BeaconBlock { proposer: ValId },
     AggregateAndProofAttestation { aggregator: ValId, committee: u64 },
     Attestation { attester: ValId, committee: u64 },
-    VoluntaryExit,
-    ProposerSlashing,
-    AttesterSlashing,
     SignedContributionAndProof,
     SyncCommitteeMessage { validator: ValId, committee: u64 },
 }
 
-const TARGET_AGGREGATORS: u64 = 16;
 const EPOCHS_PER_SYNC_COMMITTEE_PERIOD: u64 = 256;
 
 impl Generator {
-    pub fn new(
-        genesis_slot: Slot,
-        genesis_duration: Duration,
-        slots_per_epoch: u64,
-        slot_duration: Duration,
-        subnets: u64,
-        validators: HashSet<u64>,
-        total_validators: u64,
-    ) -> Self {
-        assert!(
-            validators
-                .iter()
-                .max()
-                .map(|max_val_id| max_val_id < &total_validators)
-                .unwrap_or(true),
-            "validator ids should go up to total_validators - 1"
-        );
-        assert!(
-            total_validators >= subnets * TARGET_AGGREGATORS,
-            "not enough validators to reach the target aggregators"
-        );
-        let slot_clock = SystemTimeSlotClock::new(genesis_slot, genesis_duration, slot_duration);
-        let duration_to_next_slot = slot_clock
-            .duration_to_next_slot()
-            .expect("nothing ever goes wrong");
-        Generator {
-            slot_clock,
-            slots_per_epoch,
-            validators,
-            subnets,
-            total_validators,
-            queued_messages: VecDeque::new(),
-            next_slot: Box::pin(sleep(duration_to_next_slot)),
-        }
+    pub fn builder() -> builder::GeneratorBuilder {
+        builder::GeneratorBuilder::default()
     }
 
     pub fn get_msg(&self, current_slot: Slot, kind: MsgType) -> Vec<MT> {
@@ -113,12 +88,12 @@ impl Generator {
                         // shake the val id using the epoch
                         let shaked_val_id = val_id.overflowing_add(epoch).0;
                         // assign to one of the committees
-                        let committee = shaked_val_id % self.subnets;
+                        let committee = shaked_val_id % self.attestation_subnets;
                         // get an id on the range of existing validator ids and use it to get an id
                         // inside the committee
                         let idx_in_commitee =
-                            (shaked_val_id % self.total_validators) / self.subnets;
-                        let is_aggregator = idx_in_commitee / TARGET_AGGREGATORS == 0;
+                            (shaked_val_id % self.total_validators) / self.attestation_subnets;
+                        let is_aggregator = idx_in_commitee / self.target_aggregators == 0;
                         is_aggregator.then(|| Message::AggregateAndProofAttestation {
                             aggregator: *val_id,
                             committee,
@@ -134,7 +109,7 @@ impl Generator {
                         // shake the val id using the epoch
                         let shaked_val_id = val_id.overflowing_add(epoch).0;
                         // assign to one of the committees
-                        let committee = shaked_val_id % self.subnets;
+                        let committee = shaked_val_id % self.attestation_subnets;
                         // assign attesters using the slot
                         let is_attester =
                             val_id.overflowing_add(slot).0 % self.slots_per_epoch == 0;
@@ -145,11 +120,6 @@ impl Generator {
                     })
                     .collect()
             }
-            MsgType::VoluntaryExit | MsgType::ProposerSlashing | MsgType::AttesterSlashing => {
-                // ignore them
-                vec![]
-            }
-            // MsgType::SignedContributionAndProof => todo!(),
             MsgType::SyncCommitteeMessage => {
                 let epoch = current_slot.epoch(self.slots_per_epoch).as_u64();
                 let sync_committee_period = epoch / EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
@@ -160,17 +130,19 @@ impl Generator {
                         // the validator ids range.
                         let shaked_val_id =
                             val_id.overflowing_add(sync_committee_period).0 % self.total_validators;
-                        let in_commitee = shaked_val_id / 512 == 0;
-                        in_commitee.then(|| shaked_val_id % 4).map(|committee| {
-                            Message::SyncCommitteeMessage {
+                        let sync_committee_size =
+                            self.sync_subnet_size * self.sync_committee_subnets;
+                        let in_commitee = shaked_val_id / sync_committee_size == 0;
+                        in_commitee
+                            .then(|| shaked_val_id % self.sync_committee_subnets)
+                            .map(|committee| Message::SyncCommitteeMessage {
                                 validator: *val_id,
                                 committee,
-                            }
-                        })
+                            })
                     })
                     .collect()
             }
-            _ => {
+            MsgType::SignedContributionAndProof => {
                 let kind_: u64 = (kind as usize).try_into().unwrap();
                 if current_slot % 8 == kind_ {
                     vec![Message::SignedContributionAndProof]
