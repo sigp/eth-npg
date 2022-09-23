@@ -15,6 +15,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.2", features = [ "env-filter", "fmt" ] }
 quickcheck = "1"
 quickcheck_macros = "1"
+rand = "0.8.5"
 
 [patch]
 [patch.crates-io]
