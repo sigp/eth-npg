@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::*;
 use quickcheck_macros::quickcheck;
 use rand::seq::SliceRandom;
@@ -7,7 +9,7 @@ fn sanity_check() {
     let node_count = 1;
     let test_slot = 0;
     let slots_per_epoch = 2;
-    let total_validators = 8;
+    let total_validators = 50;
     let attestation_subnets = 8;
     let aggregators = 1;
     let sync_subnet_size = 1;
@@ -130,7 +132,14 @@ fn test_expected_message_counts_fn(
             .len()
             .abs_diff(expected_attestations_per_slot);
         assert!(count_difference <= 1);
-        // let mut per_subnet_messages = HashSet::with_capacity(attnets);
+        let mut per_subnet_messages = HashMap::<usize, HashSet<usize>>::with_capacity(attnets);
+        for (val_id, attnet) in &slot_attestations {
+            per_subnet_messages
+                .entry(*attnet)
+                .or_default()
+                .insert(*val_id);
+        }
+        println!("attestations slot[{current_slot}] {per_subnet_messages:?}");
         total_attestations.extend(slot_attestations.into_iter());
     }
     assert_eq!(total_attestations.len(), expected_attestations_per_epoch);
