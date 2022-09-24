@@ -7,21 +7,21 @@ use crate::ValId;
 use super::Generator;
 
 const DEFAULT_SLOT_DURATION_SECONDS: u64 = 12;
-const DEFAULT_ATTESTATION_SUBNETS: u64 = 64;
-const DEFAULT_TARGET_AGGREGATORS: u64 = 16;
-const DEFAULT_SYNC_COMMITTEE_SIZE: u64 = 512;
-const DEFAULT_SYNC_COMMITTEE_SUBNETS: u64 = 4;
-const DEFAULT_SLOTS_PER_EPOCH: u64 = 32;
+const DEFAULT_ATTESTATION_SUBNETS: usize = 64;
+const DEFAULT_TARGET_AGGREGATORS: usize = 16;
+const DEFAULT_SYNC_COMMITTEE_SIZE: usize = 512;
+const DEFAULT_SYNC_COMMITTEE_SUBNETS: usize = 4;
+const DEFAULT_SLOTS_PER_EPOCH: usize = 32;
 
 #[derive(Default)]
 pub struct GeneratorBuilder {
     slot_clock: Option<SystemTimeSlotClock>,
-    attestation_subnets: Option<u64>,
-    target_aggregators: Option<u64>,
-    sync_subnet_size: Option<u64>,
-    sync_committee_subnets: Option<u64>,
-    slots_per_epoch: Option<u64>,
-    total_validators: Option<u64>,
+    attestation_subnets: Option<usize>,
+    target_aggregators: Option<usize>,
+    sync_subnet_size: Option<usize>,
+    sync_committee_subnets: Option<usize>,
+    slots_per_epoch: Option<usize>,
+    total_validators: Option<usize>,
 }
 
 /// Validated parameters for a Generator.
@@ -31,29 +31,29 @@ pub struct GeneratorParams {
     /// Slot clock based on system time.
     slot_clock: SystemTimeSlotClock,
     /// Epoch definition.
-    slots_per_epoch: u64,
+    slots_per_epoch: usize,
     /// Number of attestation subnets to split validators.
-    attestation_subnets: u64,
+    attestation_subnets: usize,
     /// Number of validators to include in the each sync subnet.
-    sync_subnet_size: u64,
+    sync_subnet_size: usize,
     /// Number of subcommittees to split members of the sync committee.
-    sync_committee_subnets: u64,
+    sync_committee_subnets: usize,
     /// Number of validators to designate as aggregators in the sync committee and attestation
     /// subnets.
-    target_aggregators: u64,
+    target_aggregators: usize,
     /// Number of validators in the network.
-    total_validators: u64,
+    total_validators: usize,
 }
 
 impl GeneratorParams {
     pub fn new(
         slot_clock: SystemTimeSlotClock,
-        slots_per_epoch: u64,
-        attestation_subnets: u64,
-        sync_subnet_size: u64,
-        sync_committee_subnets: u64,
-        target_aggregators: u64,
-        total_validators: u64,
+        slots_per_epoch: usize,
+        attestation_subnets: usize,
+        sync_subnet_size: usize,
+        sync_committee_subnets: usize,
+        target_aggregators: usize,
+        total_validators: usize,
     ) -> Result<Self, &'static str> {
         if slots_per_epoch == 0 {
             // Epochs are defined
@@ -132,27 +132,27 @@ impl GeneratorParams {
         })
     }
 
-    pub fn slots_per_epoch(&self) -> u64 {
+    pub fn slots_per_epoch(&self) -> usize {
         self.slots_per_epoch
     }
 
-    pub fn attestation_subnets(&self) -> u64 {
+    pub fn attestation_subnets(&self) -> usize {
         self.attestation_subnets
     }
 
-    pub fn sync_subnet_size(&self) -> u64 {
+    pub fn sync_subnet_size(&self) -> usize {
         self.sync_subnet_size
     }
 
-    pub fn sync_committee_subnets(&self) -> u64 {
+    pub fn sync_committee_subnets(&self) -> usize {
         self.sync_committee_subnets
     }
 
-    pub fn target_aggregators(&self) -> u64 {
+    pub fn target_aggregators(&self) -> usize {
         self.target_aggregators
     }
 
-    pub fn total_validators(&self) -> u64 {
+    pub fn total_validators(&self) -> usize {
         self.total_validators
     }
 }
@@ -161,12 +161,12 @@ impl GeneratorBuilder {
     /// Slot clock based on system time.
     pub fn slot_clock(
         &mut self,
-        genesis_slot: u64,
+        genesis_slot: usize,
         genesis_duration: Duration,
         slot_duration: Duration,
     ) -> &mut Self {
         self.slot_clock = Some(SystemTimeSlotClock::new(
-            Slot::new(genesis_slot),
+            Slot::new(genesis_slot as u64),
             genesis_duration,
             slot_duration,
         ));
@@ -174,38 +174,38 @@ impl GeneratorBuilder {
     }
 
     /// Number of attestation subnets to split validators.
-    pub fn attestation_subnets(&mut self, attestation_subnets: u64) -> &mut Self {
+    pub fn attestation_subnets(&mut self, attestation_subnets: usize) -> &mut Self {
         self.attestation_subnets = Some(attestation_subnets);
         self
     }
 
     /// Number of validators to designate as aggregators in the sync committee and attestation
     /// subnets.
-    pub fn target_aggregators(&mut self, aggregators: u64) -> &mut Self {
+    pub fn target_aggregators(&mut self, aggregators: usize) -> &mut Self {
         self.target_aggregators = Some(aggregators);
         self
     }
 
     /// Number of validators to include in the each sync subnet.
-    pub fn sync_subnet_size(&mut self, sync_subnet_size: u64) -> &mut Self {
+    pub fn sync_subnet_size(&mut self, sync_subnet_size: usize) -> &mut Self {
         self.sync_subnet_size = Some(sync_subnet_size);
         self
     }
 
     /// Number of subcommittees to split members of the sync committee.
-    pub fn sync_committee_subnets(&mut self, sync_committee_subnets: u64) -> &mut Self {
+    pub fn sync_committee_subnets(&mut self, sync_committee_subnets: usize) -> &mut Self {
         self.sync_committee_subnets = Some(sync_committee_subnets);
         self
     }
 
     /// Epoch definition.
-    pub fn slots_per_epoch(&mut self, slots_per_epoch: u64) -> &mut Self {
+    pub fn slots_per_epoch(&mut self, slots_per_epoch: usize) -> &mut Self {
         self.slots_per_epoch = Some(slots_per_epoch);
         self
     }
 
     /// Number of validators in the network.
-    pub fn total_validators(&mut self, total_validators: u64) -> &mut Self {
+    pub fn total_validators(&mut self, total_validators: usize) -> &mut Self {
         self.total_validators = Some(total_validators);
         self
     }

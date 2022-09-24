@@ -27,48 +27,64 @@ pub struct Generator {
     /// Slot clock based on system time.
     slot_clock: SystemTimeSlotClock,
     /// Epoch definition.
-    slots_per_epoch: u64,
+    slots_per_epoch: usize,
     /// Number of attestation subnets to split validators.
-    attestation_subnets: u64,
+    attestation_subnets: usize,
     /// Number of validators to include in each sync subnet.
-    sync_subnet_size: u64,
+    sync_subnet_size: usize,
     /// Number of subcommittees to split members of the sync committee.
-    sync_committee_subnets: u64,
+    sync_committee_subnets: usize,
     /// Number of validators to designate as aggregators in the sync committee and attestation
     /// subnets.
-    target_aggregators: u64,
+    target_aggregators: usize,
     /// Number of validators in the network.
-    total_validators: u64,
+    total_validators: usize,
     /// Validator managed by this node.
-    validators: HashSet<u64>,
+    validators: HashSet<usize>,
     /// Messages pending to be returned.
     queued_messages: VecDeque<Message>,
     /// Duration to the next slot.
     next_slot: Pin<Box<Sleep>>,
 }
 
-type MT = Message;
-
-pub type ValId = u64;
+pub type ValId = usize;
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum Message {
     BeaconBlock { proposer: ValId },
-    AggregateAndProofAttestation { aggregator: ValId, committee: u64 },
-    Attestation { attester: ValId, committee: u64 },
-    SignedContributionAndProof { validator: ValId, committee: u64 },
-    SyncCommitteeMessage { validator: ValId, committee: u64 },
+    AggregateAndProofAttestation { aggregator: ValId, committee: usize },
+    Attestation { attester: ValId, committee: usize },
+    SignedContributionAndProof { validator: ValId, committee: usize },
+    SyncCommitteeMessage { validator: ValId, committee: usize },
 }
 
-const EPOCHS_PER_SYNC_COMMITTEE_PERIOD: u64 = 256;
+const EPOCHS_PER_SYNC_COMMITTEE_PERIOD: usize = 256;
 
 impl Generator {
     pub fn builder() -> builder::GeneratorBuilder {
         builder::GeneratorBuilder::default()
     }
 
-    pub fn get_msg(&self, current_slot: Slot, kind: MsgType) -> Vec<MT> {
-        let slot = current_slot.as_u64();
+    pub fn get_attestations(
+        &self,
+        current_slot: Slot,
+    ) -> impl Iterator<Item = (ValId, usize)> + '_ {
+        let slot = current_slot.as_usize();
+        let epoch = current_slot.epoch(self.slots_per_epoch as u64).as_usize();
+        self.validators.iter().filter_map(move |val_id| {
+            // shake the val id using the epoch
+            let shaked_val_id = val_id.overflowing_add(epoch).0;
+            // assign to one of the committees
+            let committee = shaked_val_id % self.attestation_subnets;
+            // assign attesters using the slot
+            let is_attester = val_id.overflowing_add(slot).0 % self.slots_per_epoch == 0;
+            is_attester.then_some((*val_id, committee))
+        })
+    }
+
+    pub fn get_msg(&self, current_slot: Slot, kind: MsgType) -> Vec<Message> {
+        let slot = current_slot.as_usize();
+        let epoch = current_slot.epoch(self.slots_per_epoch as u64).as_usize();
         match kind {
             MsgType::BeaconBlock => {
                 // return a block if we have the validator that should send a block
@@ -80,7 +96,6 @@ impl Generator {
                 }
             }
             MsgType::AggregateAndProofAttestation => {
-                let epoch = current_slot.epoch(self.slots_per_epoch).as_u64();
                 self.validators
                     .iter()
                     .filter_map(|val_id| {
@@ -100,27 +115,14 @@ impl Generator {
                     })
                     .collect()
             }
-            MsgType::Attestation => {
-                let epoch = current_slot.epoch(self.slots_per_epoch).as_u64();
-                self.validators
-                    .iter()
-                    .filter_map(|val_id| {
-                        // shake the val id using the epoch
-                        let shaked_val_id = val_id.overflowing_add(epoch).0;
-                        // assign to one of the committees
-                        let committee = shaked_val_id % self.attestation_subnets;
-                        // assign attesters using the slot
-                        let is_attester =
-                            val_id.overflowing_add(slot).0 % self.slots_per_epoch == 0;
-                        is_attester.then_some(Message::Attestation {
-                            attester: *val_id,
-                            committee,
-                        })
-                    })
-                    .collect()
-            }
+            MsgType::Attestation => self
+                .get_attestations(current_slot)
+                .map(|(val_id, attnet)| Message::Attestation {
+                    attester: val_id,
+                    committee: attnet,
+                })
+                .collect(),
             MsgType::SyncCommitteeMessage => {
-                let epoch = current_slot.epoch(self.slots_per_epoch).as_u64();
                 let sync_committee_period = epoch / EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
                 self.validators
                     .iter()
@@ -144,7 +146,6 @@ impl Generator {
                     .collect()
             }
             MsgType::SignedContributionAndProof => {
-                let epoch = current_slot.epoch(self.slots_per_epoch).as_u64();
                 let sync_committee_period = epoch / EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
                 self.validators
                     .iter()

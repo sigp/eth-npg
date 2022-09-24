@@ -35,16 +35,16 @@ fn sanity_check() {
 // #[quickcheck]
 fn test_expected_message_counts(
     node_count: usize,
-    test_slot: u64,
-    slots_per_epoch: u64,
-    total_validators: u64,
-    attestation_subnets: u64,
+    test_slot: usize,
+    slots_per_epoch: usize,
+    total_validators: usize,
+    attestation_subnets: usize,
 ) -> quickcheck::TestResult {
     let aggregators = 1;
     let sync_subnet_size = 1;
     let sync_subnets = 1;
     // Extra checks
-    if node_count > u32::MAX as usize || total_validators > u32::MAX as u64 {
+    if node_count > u32::MAX as usize || total_validators > u32::MAX as usize {
         return quickcheck::TestResult::discard();
     }
     let mut builder = Generator::builder();
@@ -70,7 +70,7 @@ fn test_expected_message_counts(
         .build()
         .unwrap()
         .block_on(async {
-            test_expected_message_counts_fn(node_count, Slot::new(test_slot), params)
+            test_expected_message_counts_fn(node_count, Slot::new(test_slot as u64), params)
         });
 
     quickcheck::TestResult::passed()
@@ -87,15 +87,14 @@ fn test_expected_message_counts_fn(
 
     // Calculate the expected number of messages for each kind.
     let expected_blocks: usize = 1;
-    let expected_aggregates: usize =
-        (params.target_aggregators() * params.attestation_subnets()) as usize;
-    let expected_attestations_per_epoch = params.total_validators() as usize;
+    let attnets = params.attestation_subnets();
+    let expected_aggregates: usize = (params.target_aggregators() * params.attestation_subnets());
+    let expected_attestations_per_epoch = params.total_validators();
     let expected_attestations_per_slot: usize =
-        expected_attestations_per_epoch / params.slots_per_epoch() as usize;
+        expected_attestations_per_epoch / params.slots_per_epoch();
     let expected_sync_committee_msgs =
-        (params.sync_committee_subnets() * params.sync_subnet_size()) as usize;
-    let expected_sync_aggregates =
-        (params.sync_committee_subnets() * params.target_aggregators()) as usize;
+        (params.sync_committee_subnets() * params.sync_subnet_size());
+    let expected_sync_aggregates = (params.sync_committee_subnets() * params.target_aggregators());
 
     // Setup the network, giving the `node_count` nodes each a random number of validators from the
     // total pool.
@@ -118,16 +117,20 @@ fn test_expected_message_counts_fn(
     assert_eq!(aggregates.len(), expected_aggregates);
 
     // Test the number of attestations per slot and epoch.
-    let epoch = test_slot.epoch(slots_per_epoch);
-    let slot_iter = epoch.slot_iter(slots_per_epoch);
+    let epoch = test_slot.epoch(slots_per_epoch as u64);
+    let slot_iter = epoch.slot_iter(slots_per_epoch as u64);
 
     let mut total_attestations = HashSet::with_capacity(expected_attestations_per_epoch);
     for current_slot in slot_iter {
-        let slot_attestations = get_msgs(&nodes, MsgType::Attestation, current_slot);
+        let slot_attestations = nodes
+            .iter()
+            .flat_map(|g| g.get_attestations(current_slot))
+            .collect::<HashSet<_>>();
         let count_difference = slot_attestations
             .len()
             .abs_diff(expected_attestations_per_slot);
         assert!(count_difference <= 1);
+        // let mut per_subnet_messages = HashSet::with_capacity(attnets);
         total_attestations.extend(slot_attestations.into_iter());
     }
     assert_eq!(total_attestations.len(), expected_attestations_per_epoch);
@@ -150,7 +153,7 @@ fn setup_network(node_count: usize, generator_params: builder::GeneratorParams) 
     // Create the list of all validator ids and shuffle them.
     let mut all_validators = (0..total_validators).into_iter().collect::<Vec<_>>();
     all_validators.shuffle(&mut rand::thread_rng());
-    let per_node_vals = (total_validators as usize) / node_count;
+    let per_node_vals = (total_validators) / node_count;
     let all_validators = all_validators.chunks(per_node_vals);
 
     let mut vals = 0;
@@ -166,6 +169,6 @@ fn setup_network(node_count: usize, generator_params: builder::GeneratorParams) 
                 .expect("right parameters"),
         );
     }
-    assert_eq!(vals, total_validators as usize);
+    assert_eq!(vals, total_validators);
     nodes
 }
