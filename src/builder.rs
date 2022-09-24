@@ -77,14 +77,14 @@ impl GeneratorParams {
         } else if target_aggregators
             .checked_mul(attestation_subnets)
             .ok_or("total attestation aggregators across the network is too large")?
-            < total_validators
+            > total_validators
         {
             // There must be enough validators to cover the aggregators requirements.
             Err("not enough validators to reach the target aggregators in the attestation subnets")
         } else if target_aggregators
             .checked_mul(sync_committee_subnets)
             .ok_or("target sync aggregators across the network is too large")?
-            < total_validators
+            > total_validators
         {
             // There must be enough validators to cover the aggregators requirements.
             Err("not enough validators to reach the target aggregators in the sync committees")
@@ -215,7 +215,7 @@ impl GeneratorBuilder {
             slot_clock,
             attestation_subnets,
             target_aggregators,
-            sync_subnet_size: sync_committee_size,
+            sync_subnet_size,
             sync_committee_subnets,
             slots_per_epoch,
             total_validators,
@@ -232,7 +232,7 @@ impl GeneratorBuilder {
         let total_validators = total_validators.ok_or("total_validators not set")?;
         let attestation_subnets = attestation_subnets.unwrap_or(DEFAULT_ATTESTATION_SUBNETS);
         let target_aggregators = target_aggregators.unwrap_or(DEFAULT_TARGET_AGGREGATORS);
-        let sync_committee_size = sync_committee_size.unwrap_or(DEFAULT_SYNC_COMMITTEE_SIZE);
+        let sync_subnet_size = sync_subnet_size.unwrap_or(DEFAULT_SYNC_COMMITTEE_SIZE);
         let sync_committee_subnets =
             sync_committee_subnets.unwrap_or(DEFAULT_SYNC_COMMITTEE_SUBNETS);
         let slots_per_epoch = slots_per_epoch.unwrap_or(DEFAULT_SLOTS_PER_EPOCH);
@@ -241,7 +241,7 @@ impl GeneratorBuilder {
             slot_clock,
             slots_per_epoch,
             attestation_subnets,
-            sync_committee_size,
+            sync_subnet_size,
             sync_committee_subnets,
             target_aggregators,
             total_validators,

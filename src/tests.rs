@@ -2,7 +2,37 @@ use super::*;
 use quickcheck_macros::quickcheck;
 use rand::seq::SliceRandom;
 
-#[quickcheck]
+#[test]
+fn sanity_check() {
+    let node_count = 1;
+    let test_slot = 0;
+    let slots_per_epoch = 2;
+    let total_validators = 8;
+    let attestation_subnets = 8;
+    let aggregators = 1;
+    let sync_subnet_size = 1;
+    let sync_subnets = 1;
+
+    let mut builder = Generator::builder();
+    let params = builder
+        .slots_per_epoch(slots_per_epoch)
+        .total_validators(total_validators)
+        .attestation_subnets(attestation_subnets)
+        .target_aggregators(aggregators)
+        .sync_committee_subnets(sync_subnets)
+        .sync_subnet_size(sync_subnet_size)
+        .build_params()
+        .expect("right params");
+
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            test_expected_message_counts_fn(node_count, Slot::new(test_slot), params)
+        });
+}
+// #[quickcheck]
 fn test_expected_message_counts(
     node_count: usize,
     test_slot: u64,
@@ -10,17 +40,31 @@ fn test_expected_message_counts(
     total_validators: u64,
     attestation_subnets: u64,
 ) -> quickcheck::TestResult {
+    let aggregators = 1;
+    let sync_subnet_size = 1;
+    let sync_subnets = 1;
+    // Extra checks
+    if node_count > u32::MAX as usize || total_validators > u32::MAX as u64 {
+        return quickcheck::TestResult::discard();
+    }
     let mut builder = Generator::builder();
     let params = match builder
         .slots_per_epoch(slots_per_epoch)
         .total_validators(total_validators)
         .attestation_subnets(attestation_subnets)
+        .target_aggregators(aggregators)
+        .sync_committee_subnets(sync_subnets)
+        .sync_subnet_size(sync_subnet_size)
         .build_params()
     {
-        Err(_) => return quickcheck::TestResult::discard(),
+        Err(e) => {
+            println!("discard {e}");
+            return quickcheck::TestResult::discard();
+        }
         Ok(params) => params,
     };
 
+    println!("Running test");
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
