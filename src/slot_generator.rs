@@ -38,9 +38,9 @@ impl std::fmt::Debug for Subnet {
 
 pub struct SlotGenerator {
     /// Epoch definition.
-    max_y: u64,
+    slots_per_epoch: u64,
     /// Number of attestation subnets to split validators.
-    max_x: u64,
+    attestation_subnets: u64,
     /// Number of validators to include in each sync subnet.
     sync_subnet_size: u64,
     /// Number of subcommittees to split members of the sync committee.
@@ -49,7 +49,9 @@ pub struct SlotGenerator {
     /// subnets.
     target_aggregators: u64,
     /// Number of validators in the network.
-    total_n: u64,
+    total_validators: u64,
+    /// GCD(total_validators, attestation_subnets) == 1.
+    att_subnets_is_relative: bool,
 }
 
 impl SlotGenerator {
@@ -61,18 +63,27 @@ impl SlotGenerator {
         target_aggregators: u64,
         total_validators: u64,
     ) -> Self {
+        fn gcd(mut a: u64, mut b: u64) -> u64 {
+            while b > 0 {
+                (a, b) = (b, a % b);
+            }
+            a
+        }
+
+        let att_subnets_is_relative = gcd(attestation_subnets, slots_per_epoch) == 1;
         Self {
-            max_y: slots_per_epoch,
-            max_x: attestation_subnets,
+            slots_per_epoch,
+            attestation_subnets,
             sync_subnet_size,
             sync_committee_subnets,
             target_aggregators,
-            total_n: total_validators,
+            total_validators,
+            att_subnets_is_relative,
         }
     }
 
     pub fn get_blocks(&self, slot: Slot, validators: &HashSet<ValId>) -> Option<ValId> {
-        let proposer = ValId(slot.as_u64() % self.total_n);
+        let proposer = ValId(slot.as_u64() % self.total_validators);
         validators.contains(&proposer).then_some(proposer)
     }
 
@@ -81,16 +92,23 @@ impl SlotGenerator {
         slot: Slot,
         validators: &'a HashSet<ValId>,
     ) -> impl Iterator<Item = (ValId, Subnet)> + 'a {
-        let epoch = slot.epoch(self.max_y).as_u64();
-        let y = slot.as_u64();
+        let epoch = slot.epoch(self.slots_per_epoch).as_u64();
+        let slot = slot.as_u64();
         validators.iter().filter_map(move |val_id| {
             // shake the val id using the epoch
-            let n = val_id.overflowing_add(epoch).0 % self.total_n;
+            let shaked_val_id = val_id.overflowing_add(epoch).0 % self.total_validators;
             // assign to one of the committees
-            let x = Subnet(n % self.max_x);
+            let subnet = Subnet(shaked_val_id % self.attestation_subnets);
             // assign attesters using the slot
-            let is_attester = n % self.max_y == y % self.max_y;
-            is_attester.then_some((*val_id, x))
+            let is_attester = (shaked_val_id
+                + if self.att_subnets_is_relative {
+                    0
+                } else {
+                    shaked_val_id / self.attestation_subnets
+                })
+                % self.slots_per_epoch
+                == slot % self.slots_per_epoch;
+            is_attester.then_some((*val_id, subnet))
         })
     }
 
@@ -99,20 +117,60 @@ impl SlotGenerator {
         slot: Slot,
         validators: &'a HashSet<ValId>,
     ) -> impl Iterator<Item = (ValId, Subnet)> + 'a {
-        let epoch = slot.epoch(self.max_y).as_u64();
+        let epoch = slot.epoch(self.slots_per_epoch).as_u64();
         validators.iter().filter_map(move |val_id| {
             // shake the val id using the epoch
-            let shaked_val_id = val_id.overflowing_add(epoch).0;
+            let shaked_val_id = val_id.overflowing_add(epoch).0 % self.total_validators;
             // assign to one of the committees
-            let subnet = Subnet(shaked_val_id % self.max_x);
-            // get an id on the range of existing validator ids and use it to get an id
-            // inside the committee
-            let idx_in_commitee = (shaked_val_id % self.total_n) / self.max_x;
-            let is_aggregator = idx_in_commitee / self.target_aggregators == 0;
+            let subnet = Subnet(shaked_val_id % self.attestation_subnets);
+            // get an id inside the committee
+            let idx_in_commitee = shaked_val_id / self.attestation_subnets;
+            let is_aggregator = (idx_in_commitee / self.target_aggregators) == 0;
             is_aggregator.then_some((*val_id, subnet))
         })
     }
 
-    pub fn get_sync_committee_aggregates(&self, slot: Slot, validators: &HashSet<ValId>) {}
-    pub fn get_sync_committee_message(&self, slot: Slot, validators: &HashSet<ValId>) {}
+    pub fn get_sync_committee_messages<'a>(
+        &'a self,
+        slot: Slot,
+        validators: &'a HashSet<ValId>,
+    ) -> impl Iterator<Item = (ValId, Subnet)> + 'a {
+        let epoch = slot.epoch(self.slots_per_epoch).as_u64();
+        let slot = slot.as_u64();
+        let sync_committee_period = epoch / crate::EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
+        validators.iter().filter_map(move |val_id| {
+            // shake the val id using the sync_committee_period and move it back to
+            // the validator ids range.
+            let shaked_val_id =
+                val_id.overflowing_add(sync_committee_period).0 % self.total_validators;
+            let sync_committee_size = self.sync_subnet_size * self.sync_committee_subnets;
+            let in_commitee = shaked_val_id / sync_committee_size == 0;
+            in_commitee.then(|| {
+                let subnet = Subnet(shaked_val_id % self.sync_committee_subnets);
+                (*val_id, subnet)
+            })
+        })
+    }
+
+    pub fn get_sync_committee_aggregates<'a>(
+        &'a self,
+        slot: Slot,
+        validators: &'a HashSet<ValId>,
+    ) -> impl Iterator<Item = (ValId, Subnet)> + 'a {
+        let epoch = slot.epoch(self.slots_per_epoch).as_u64();
+        let slot = slot.as_u64();
+        let sync_committee_period = epoch / crate::EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
+        validators.iter().filter_map(move |val_id| {
+            // shake the val id using the sync_committee_period and move it back to
+            // the validator ids range.
+            let shaked_val_id =
+                val_id.overflowing_add(sync_committee_period).0 % self.total_validators;
+            let sync_committee_size = self.sync_subnet_size * self.sync_committee_subnets;
+            let in_commitee = shaked_val_id / sync_committee_size == 0;
+            let subnet = Subnet(shaked_val_id % self.sync_committee_subnets);
+            let id_in_subnet = shaked_val_id / self.sync_committee_subnets;
+            let is_aggregator = (id_in_subnet / self.target_aggregators) == 0;
+            (in_commitee && is_aggregator).then(|| (*val_id, subnet))
+        })
+    }
 }

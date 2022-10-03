@@ -78,7 +78,7 @@ pub enum Message {
     SyncCommitteeMessage { validator: ValId, committee: usize },
 }
 
-const EPOCHS_PER_SYNC_COMMITTEE_PERIOD: usize = 256;
+const EPOCHS_PER_SYNC_COMMITTEE_PERIOD: u64 = 256;
 
 impl Generator {
     pub fn builder() -> builder::GeneratorBuilder {
@@ -99,78 +99,42 @@ impl Generator {
                 }
             }
             MsgType::AggregateAndProofAttestation => {
-                self.validators
-                    .iter()
-                    .filter_map(|val_id| {
-                        // shake the val id using the epoch
-                        let shaked_val_id = val_id.overflowing_add(epoch).0;
-                        // assign to one of the committees
-                        let committee = shaked_val_id % self.attestation_subnets;
-                        // get an id on the range of existing validator ids and use it to get an id
-                        // inside the committee
-                        let idx_in_commitee =
-                            (shaked_val_id % self.total_validators) / self.attestation_subnets;
-                        let is_aggregator = idx_in_commitee / self.target_aggregators == 0;
-                        is_aggregator.then_some(Message::AggregateAndProofAttestation {
-                            aggregator: *val_id,
-                            committee,
-                        })
-                    })
-                    .collect()
+                vec![]
             }
             MsgType::Attestation => vec![],
 
             MsgType::SyncCommitteeMessage => {
-                let sync_committee_period = epoch / EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
-                self.validators
-                    .iter()
-                    .filter_map(|val_id| {
-                        // shake the val id using the sync_committee_period and move it back to
-                        // the validator ids range.
-                        let shaked_val_id =
-                            val_id.overflowing_add(sync_committee_period).0 % self.total_validators;
-                        let sync_committee_size =
-                            self.sync_subnet_size * self.sync_committee_subnets;
-                        let in_commitee = shaked_val_id / sync_committee_size == 0;
-                        in_commitee.then(|| {
-                            let idx_in_commitee = shaked_val_id % sync_committee_size;
-                            let committee = idx_in_commitee % self.sync_committee_subnets;
-                            Message::SyncCommitteeMessage {
-                                validator: *val_id,
-                                committee,
-                            }
-                        })
-                    })
-                    .collect()
+                vec![]
             }
             MsgType::SignedContributionAndProof => {
-                let sync_committee_period = epoch / EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
-                self.validators
-                    .iter()
-                    .filter_map(|val_id| {
-                        // shake the val id using the sync_committee_period and move it back to
-                        // the validator ids range.
-                        let shaked_val_id =
-                            val_id.overflowing_add(sync_committee_period).0 % self.total_validators;
-                        let sync_committee_size =
-                            self.sync_subnet_size * self.sync_committee_subnets;
-                        let in_commitee = shaked_val_id / sync_committee_size == 0;
-                        if !in_commitee {
-                            return None;
-                        }
-                        let idx_in_commitee = shaked_val_id % sync_committee_size;
-                        let committee = idx_in_commitee % self.sync_committee_subnets;
-                        let idx_in_subcommittee = idx_in_commitee / self.sync_committee_subnets;
-                        let is_aggregator = (idx_in_subcommittee.overflowing_add(slot).0
-                            % self.sync_committee_subnets)
-                            / self.target_aggregators
-                            == 0;
-                        is_aggregator.then_some(Message::SignedContributionAndProof {
-                            validator: *val_id,
-                            committee,
-                        })
-                    })
-                    .collect()
+                vec![]
+                // let sync_committee_period = epoch / EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
+                // self.validators
+                //     .iter()
+                //     .filter_map(|val_id| {
+                //         // shake the val id using the sync_committee_period and move it back to
+                //         // the validator ids range.
+                //         let shaked_val_id =
+                //             val_id.overflowing_add(sync_committee_period).0 % self.total_validators;
+                //         let sync_committee_size =
+                //             self.sync_subnet_size * self.sync_committee_subnets;
+                //         let in_commitee = shaked_val_id / sync_committee_size == 0;
+                //         if !in_commitee {
+                //             return None;
+                //         }
+                //         let idx_in_commitee = shaked_val_id % sync_committee_size;
+                //         let committee = idx_in_commitee % self.sync_committee_subnets;
+                //         let idx_in_subcommittee = idx_in_commitee / self.sync_committee_subnets;
+                //         let is_aggregator = (idx_in_subcommittee.overflowing_add(slot).0
+                //             % self.sync_committee_subnets)
+                //             / self.target_aggregators
+                //             == 0;
+                //         is_aggregator.then_some(Message::SignedContributionAndProof {
+                //             validator: *val_id,
+                //             committee,
+                //         })
+                //     })
+                //     .collect()
             }
         }
     }
