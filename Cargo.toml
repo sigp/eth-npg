@@ -11,10 +11,6 @@ slot_clock = { git = "https://github.com/sigp/lighthouse", branch = "unstable" }
 tokio = { version = "1.21.1", features = [ "time", "macros", "rt" ] }
 futures = "0.3.24"
 strum = { version = "0.24", features = ["derive"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.2", features = [ "env-filter", "fmt" ] }
-quickcheck = "1"
-quickcheck_macros = "1"
 rand = "0.8.5"
 
 [patch]
