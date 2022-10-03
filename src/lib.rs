@@ -8,11 +8,11 @@ use std::{
 
 use futures::{stream::Stream, Future};
 use slot_clock::{Slot, SlotClock, SystemTimeSlotClock};
+use slot_generator::{SlotGenerator, Subnet, ValId};
 use strum::{EnumIter, IntoEnumIterator};
 use tokio::time::{sleep, Sleep};
 
 mod builder;
-mod gen_fns;
 mod slot_generator;
 #[cfg(test)]
 mod tests;
@@ -30,52 +30,23 @@ pub enum MsgType {
 pub struct Generator {
     /// Slot clock based on system time.
     slot_clock: SystemTimeSlotClock,
-    /// Epoch definition.
-    slots_per_epoch: usize,
-    /// Number of attestation subnets to split validators.
-    attestation_subnets: usize,
-    /// Number of validators to include in each sync subnet.
-    sync_subnet_size: usize,
-    /// Number of subcommittees to split members of the sync committee.
-    sync_committee_subnets: usize,
-    /// Number of validators to designate as aggregators in the sync committee and attestation
-    /// subnets.
-    target_aggregators: usize,
-    /// Number of validators in the network.
-    total_validators: usize,
+    /// Slot messages generator.
+    slot_generator: SlotGenerator,
     /// Validator managed by this node.
-    validators: HashSet<usize>,
+    validators: HashSet<ValId>,
     /// Messages pending to be returned.
     queued_messages: VecDeque<Message>,
     /// Duration to the next slot.
     next_slot: Pin<Box<Sleep>>,
 }
 
-pub struct SlotGenerator {
-    /// Epoch definition.
-    slots_per_epoch: usize,
-    /// Number of attestation subnets to split validators.
-    attestation_subnets: usize,
-    /// Number of validators to include in each sync subnet.
-    sync_subnet_size: usize,
-    /// Number of subcommittees to split members of the sync committee.
-    sync_committee_subnets: usize,
-    /// Number of validators to designate as aggregators in the sync committee and attestation
-    /// subnets.
-    target_aggregators: usize,
-    /// Number of validators in the network.
-    total_validators: usize,
-}
-
-pub type ValId = usize;
-
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum Message {
     BeaconBlock { proposer: ValId },
-    AggregateAndProofAttestation { aggregator: ValId, committee: usize },
-    Attestation { attester: ValId, committee: usize },
-    SignedContributionAndProof { validator: ValId, committee: usize },
-    SyncCommitteeMessage { validator: ValId, committee: usize },
+    AggregateAndProofAttestation { aggregator: ValId, subnet: Subnet },
+    Attestation { attester: ValId, subnet: Subnet },
+    SignedContributionAndProof { validator: ValId, subnet: Subnet },
+    SyncCommitteeMessage { validator: ValId, subnet: Subnet },
 }
 
 const EPOCHS_PER_SYNC_COMMITTEE_PERIOD: u64 = 256;
@@ -85,64 +56,47 @@ impl Generator {
         builder::GeneratorBuilder::default()
     }
 
-    pub fn get_msg(&self, current_slot: Slot, kind: MsgType) -> Vec<Message> {
-        let slot = current_slot.as_usize();
-        let epoch = current_slot.epoch(self.slots_per_epoch as u64).as_usize();
-        match kind {
-            MsgType::BeaconBlock => {
-                // return a block if we have the validator that should send a block
-                let proposer = slot % self.total_validators;
-                if self.validators.contains(&proposer) {
-                    vec![Message::BeaconBlock { proposer }]
-                } else {
-                    vec![]
-                }
-            }
-            MsgType::AggregateAndProofAttestation => {
-                vec![]
-            }
-            MsgType::Attestation => vec![],
-
-            MsgType::SyncCommitteeMessage => {
-                vec![]
-            }
-            MsgType::SignedContributionAndProof => {
-                vec![]
-                // let sync_committee_period = epoch / EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
-                // self.validators
-                //     .iter()
-                //     .filter_map(|val_id| {
-                //         // shake the val id using the sync_committee_period and move it back to
-                //         // the validator ids range.
-                //         let shaked_val_id =
-                //             val_id.overflowing_add(sync_committee_period).0 % self.total_validators;
-                //         let sync_committee_size =
-                //             self.sync_subnet_size * self.sync_committee_subnets;
-                //         let in_commitee = shaked_val_id / sync_committee_size == 0;
-                //         if !in_commitee {
-                //             return None;
-                //         }
-                //         let idx_in_commitee = shaked_val_id % sync_committee_size;
-                //         let committee = idx_in_commitee % self.sync_committee_subnets;
-                //         let idx_in_subcommittee = idx_in_commitee / self.sync_committee_subnets;
-                //         let is_aggregator = (idx_in_subcommittee.overflowing_add(slot).0
-                //             % self.sync_committee_subnets)
-                //             / self.target_aggregators
-                //             == 0;
-                //         is_aggregator.then_some(Message::SignedContributionAndProof {
-                //             validator: *val_id,
-                //             committee,
-                //         })
-                //     })
-                //     .collect()
-            }
-        }
-    }
-
     fn queue_slot_msgs(&mut self, current_slot: Slot) {
         for msg_type in MsgType::iter() {
-            let msgs = self.get_msg(current_slot, msg_type);
-            self.queued_messages.extend(msgs);
+            match msg_type {
+                MsgType::BeaconBlock => self.queued_messages.extend(
+                    self.slot_generator
+                        .get_blocks(current_slot, &self.validators)
+                        .into_iter()
+                        .map(|proposer| Message::BeaconBlock { proposer }),
+                ),
+                MsgType::AggregateAndProofAttestation => self.queued_messages.extend(
+                    self.slot_generator
+                        .get_aggregates(current_slot, &self.validators)
+                        .map(
+                            |(aggregator, subnet)| Message::AggregateAndProofAttestation {
+                                aggregator,
+                                subnet,
+                            },
+                        ),
+                ),
+                MsgType::Attestation => self.queued_messages.extend(
+                    self.slot_generator
+                        .get_attestations(current_slot, &self.validators)
+                        .map(|(attester, subnet)| Message::Attestation { attester, subnet }),
+                ),
+                MsgType::SignedContributionAndProof => self.queued_messages.extend(
+                    self.slot_generator
+                        .get_sync_committee_aggregates(current_slot, &self.validators)
+                        .map(|(validator, subnet)| Message::SignedContributionAndProof {
+                            validator,
+                            subnet,
+                        }),
+                ),
+                MsgType::SyncCommitteeMessage => self.queued_messages.extend(
+                    self.slot_generator
+                        .get_sync_committee_messages(current_slot, &self.validators)
+                        .map(|(validator, subnet)| Message::SyncCommitteeMessage {
+                            validator,
+                            subnet,
+                        }),
+                ),
+            }
         }
     }
 }
