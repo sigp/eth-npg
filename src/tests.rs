@@ -2,8 +2,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::slot_generator::{SlotGenerator, Subnet, ValId};
 
-use quickcheck_macros::quickcheck;
-use rand::seq::SliceRandom;
 use slot_clock::Slot;
 
 #[test]
@@ -54,7 +52,7 @@ fn test_attestations() {
             "all subnets should be attested on every epoch"
         );
 
-        for (subnet, msgs) in subnet_messages.iter() {
+        for (_subnet, msgs) in subnet_messages.iter() {
             assert!(msgs.len().abs_diff(epected_slot_subnet_atts) <= 1);
         }
 
@@ -132,7 +130,7 @@ fn test_sync_messages() {
     let sync_messages =
         slot_generator.get_sync_committee_messages(Slot::new(test_slot), &all_validators);
     let mut per_subnet_messages = HashMap::<Subnet, usize>::with_capacity(sync_subnets as usize);
-    for (val_id, subnet) in sync_messages {
+    for (_val_id, subnet) in sync_messages {
         *per_subnet_messages.entry(subnet).or_default() += 1;
     }
     assert_eq!(per_subnet_messages.len(), sync_subnets as usize);

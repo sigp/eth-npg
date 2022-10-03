@@ -1,5 +1,3 @@
-#![allow(warnings)]
-
 use std::{
     collections::{HashSet, VecDeque},
     pin::Pin,

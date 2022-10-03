@@ -1,4 +1,4 @@
-use std::{collections::HashSet, process::id};
+use std::collections::HashSet;
 
 use slot_clock::Slot;
 
@@ -136,7 +136,6 @@ impl SlotGenerator {
         validators: &'a HashSet<ValId>,
     ) -> impl Iterator<Item = (ValId, Subnet)> + 'a {
         let epoch = slot.epoch(self.slots_per_epoch).as_u64();
-        let slot = slot.as_u64();
         let sync_committee_period = epoch / crate::EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
         validators.iter().filter_map(move |val_id| {
             // shake the val id using the sync_committee_period and move it back to
@@ -158,7 +157,6 @@ impl SlotGenerator {
         validators: &'a HashSet<ValId>,
     ) -> impl Iterator<Item = (ValId, Subnet)> + 'a {
         let epoch = slot.epoch(self.slots_per_epoch).as_u64();
-        let slot = slot.as_u64();
         let sync_committee_period = epoch / crate::EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
         validators.iter().filter_map(move |val_id| {
             // shake the val id using the sync_committee_period and move it back to
