@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 use std::{
     collections::{HashSet, VecDeque},
     pin::Pin,
@@ -10,6 +12,8 @@ use strum::{EnumIter, IntoEnumIterator};
 use tokio::time::{sleep, Sleep};
 
 mod builder;
+mod gen_fns;
+mod slot_generator;
 #[cfg(test)]
 mod tests;
 
@@ -47,6 +51,22 @@ pub struct Generator {
     next_slot: Pin<Box<Sleep>>,
 }
 
+pub struct SlotGenerator {
+    /// Epoch definition.
+    slots_per_epoch: usize,
+    /// Number of attestation subnets to split validators.
+    attestation_subnets: usize,
+    /// Number of validators to include in each sync subnet.
+    sync_subnet_size: usize,
+    /// Number of subcommittees to split members of the sync committee.
+    sync_committee_subnets: usize,
+    /// Number of validators to designate as aggregators in the sync committee and attestation
+    /// subnets.
+    target_aggregators: usize,
+    /// Number of validators in the network.
+    total_validators: usize,
+}
+
 pub type ValId = usize;
 
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -63,23 +83,6 @@ const EPOCHS_PER_SYNC_COMMITTEE_PERIOD: usize = 256;
 impl Generator {
     pub fn builder() -> builder::GeneratorBuilder {
         builder::GeneratorBuilder::default()
-    }
-
-    pub fn get_attestations(
-        &self,
-        current_slot: Slot,
-    ) -> impl Iterator<Item = (ValId, usize)> + '_ {
-        let slot = current_slot.as_usize();
-        let epoch = current_slot.epoch(self.slots_per_epoch as u64).as_usize();
-        self.validators.iter().filter_map(move |val_id| {
-            // shake the val id using the epoch
-            let shaked_val_id = val_id.overflowing_add(epoch).0;
-            // assign to one of the committees
-            let committee = shaked_val_id % self.attestation_subnets;
-            // assign attesters using the slot
-            let is_attester = val_id.overflowing_add(slot).0 % self.slots_per_epoch == 0;
-            is_attester.then_some((*val_id, committee))
-        })
     }
 
     pub fn get_msg(&self, current_slot: Slot, kind: MsgType) -> Vec<Message> {
@@ -115,13 +118,8 @@ impl Generator {
                     })
                     .collect()
             }
-            MsgType::Attestation => self
-                .get_attestations(current_slot)
-                .map(|(val_id, attnet)| Message::Attestation {
-                    attester: val_id,
-                    committee: attnet,
-                })
-                .collect(),
+            MsgType::Attestation => vec![],
+
             MsgType::SyncCommitteeMessage => {
                 let sync_committee_period = epoch / EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
                 self.validators
