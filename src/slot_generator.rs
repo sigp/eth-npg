@@ -168,7 +168,7 @@ impl SlotGenerator {
             let subnet = Subnet(shaked_val_id % self.sync_committee_subnets);
             let id_in_subnet = shaked_val_id / self.sync_committee_subnets;
             let is_aggregator = (id_in_subnet / self.target_aggregators) == 0;
-            (in_commitee && is_aggregator).then(|| (*val_id, subnet))
+            (in_commitee && is_aggregator).then_some((*val_id, subnet))
         })
     }
 }
