@@ -11,6 +11,7 @@ use strum::{EnumIter, IntoEnumIterator};
 use tokio::time::{sleep, Sleep};
 
 mod builder;
+mod sizes;
 mod slot_generator;
 #[cfg(test)]
 mod tests;
