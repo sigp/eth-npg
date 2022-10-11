@@ -10,9 +10,9 @@ use slot_generator::{SlotGenerator, Subnet, ValId};
 use strum::{EnumIter, IntoEnumIterator};
 use tokio::time::{sleep, Sleep};
 
-mod builder;
-mod sizes;
-mod slot_generator;
+pub mod builder;
+pub mod sizes;
+pub mod slot_generator;
 #[cfg(test)]
 mod tests;
 
