@@ -41,7 +41,7 @@ pub struct Generator {
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum Message {
-    BeaconBlock { proposer: ValId },
+    BeaconBlock { proposer: ValId, slot: Slot },
     AggregateAndProofAttestation { aggregator: ValId, subnet: Subnet },
     Attestation { attester: ValId, subnet: Subnet },
     SignedContributionAndProof { validator: ValId, subnet: Subnet },
@@ -62,7 +62,7 @@ impl Generator {
                     self.slot_generator
                         .get_blocks(current_slot, &self.validators)
                         .into_iter()
-                        .map(|proposer| Message::BeaconBlock { proposer }),
+                        .map(|proposer| Message::BeaconBlock { proposer, slot: current_slot }),
                 ),
                 MsgType::AggregateAndProofAttestation => self.queued_messages.extend(
                     self.slot_generator
