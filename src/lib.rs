@@ -41,11 +41,30 @@ pub struct Generator {
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum Message {
-    BeaconBlock { proposer: ValId, slot: Slot },
-    AggregateAndProofAttestation { aggregator: ValId, subnet: Subnet },
-    Attestation { attester: ValId, subnet: Subnet },
-    SignedContributionAndProof { validator: ValId, subnet: Subnet },
-    SyncCommitteeMessage { validator: ValId, subnet: Subnet },
+    BeaconBlock {
+        proposer: ValId,
+        slot: Slot,
+    },
+    AggregateAndProofAttestation {
+        aggregator: ValId,
+        subnet: Subnet,
+        slot: Slot,
+    },
+    Attestation {
+        attester: ValId,
+        subnet: Subnet,
+        slot: Slot,
+    },
+    SignedContributionAndProof {
+        validator: ValId,
+        subnet: Subnet,
+        slot: Slot,
+    },
+    SyncCommitteeMessage {
+        validator: ValId,
+        subnet: Subnet,
+        slot: Slot,
+    },
 }
 
 const EPOCHS_PER_SYNC_COMMITTEE_PERIOD: u64 = 256;
@@ -62,7 +81,10 @@ impl Generator {
                     self.slot_generator
                         .get_blocks(current_slot, &self.validators)
                         .into_iter()
-                        .map(|proposer| Message::BeaconBlock { proposer, slot: current_slot }),
+                        .map(|proposer| Message::BeaconBlock {
+                            proposer,
+                            slot: current_slot,
+                        }),
                 ),
                 MsgType::AggregateAndProofAttestation => self.queued_messages.extend(
                     self.slot_generator
@@ -71,13 +93,18 @@ impl Generator {
                             |(aggregator, subnet)| Message::AggregateAndProofAttestation {
                                 aggregator,
                                 subnet,
+                                slot: current_slot,
                             },
                         ),
                 ),
                 MsgType::Attestation => self.queued_messages.extend(
                     self.slot_generator
                         .get_attestations(current_slot, &self.validators)
-                        .map(|(attester, subnet)| Message::Attestation { attester, subnet }),
+                        .map(|(attester, subnet)| Message::Attestation {
+                            attester,
+                            subnet,
+                            slot: current_slot,
+                        }),
                 ),
                 MsgType::SignedContributionAndProof => self.queued_messages.extend(
                     self.slot_generator
@@ -85,6 +112,7 @@ impl Generator {
                         .map(|(validator, subnet)| Message::SignedContributionAndProof {
                             validator,
                             subnet,
+                            slot: current_slot,
                         }),
                 ),
                 MsgType::SyncCommitteeMessage => self.queued_messages.extend(
@@ -93,6 +121,7 @@ impl Generator {
                         .map(|(validator, subnet)| Message::SyncCommitteeMessage {
                             validator,
                             subnet,
+                            slot: current_slot,
                         }),
                 ),
             }
