@@ -33,7 +33,7 @@ impl GeneratorBuilder {
         slot_duration: Duration,
     ) -> &mut Self {
         self.slot_clock = Some(SystemTimeSlotClock::new(
-            Slot::new(genesis_slot as u64),
+            Slot::new(genesis_slot),
             genesis_duration,
             slot_duration,
         ));
@@ -164,12 +164,19 @@ impl GeneratorBuilder {
             target_aggregators,
             total_validators,
         );
+
+        // Slot interval
+        let interval = tokio::time::interval_at(
+            tokio::time::Instant::now() + next_slot,
+            slot_clock.slot_duration(),
+        );
+
         Ok(Generator {
             slot_clock,
             slot_generator,
             validators,
             queued_messages: Default::default(),
-            next_slot: Box::pin(tokio::time::sleep(next_slot)),
+            interval,
         })
     }
 }

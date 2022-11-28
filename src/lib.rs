@@ -4,11 +4,12 @@ use std::{
     task::Poll,
 };
 
-use futures::{stream::Stream, Future};
+//use futures::{stream::Stream, Future};
+use futures::stream::Stream;
 use slot_clock::{Slot, SlotClock, SystemTimeSlotClock};
 use slot_generator::{SlotGenerator, Subnet, ValId};
 use strum::{EnumIter, IntoEnumIterator};
-use tokio::time::{sleep, Sleep};
+// use tokio::time::{sleep, Sleep};
 
 pub mod builder;
 pub mod sizes;
@@ -35,8 +36,8 @@ pub struct Generator {
     validators: HashSet<ValId>,
     /// Messages pending to be returned.
     queued_messages: VecDeque<Message>,
-    /// Duration to the next slot.
-    next_slot: Pin<Box<Sleep>>,
+    /// Slot interval.
+    interval: tokio::time::Interval,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -80,7 +81,6 @@ impl Generator {
                 MsgType::BeaconBlock => self.queued_messages.extend(
                     self.slot_generator
                         .get_blocks(current_slot, &self.validators)
-                        .into_iter()
                         .map(|proposer| Message::BeaconBlock {
                             proposer,
                             slot: current_slot,
@@ -141,14 +141,14 @@ impl Stream for Generator {
             return Poll::Ready(Some(msg));
         }
 
-        if self.next_slot.as_mut().poll(cx).is_ready() {
+        if self.interval.poll_tick(cx).is_ready() {
             let current_slot = self.slot_clock.now().unwrap();
             self.queue_slot_msgs(current_slot);
+        }
 
-            let duration_to_next_slot = self.slot_clock.duration_to_next_slot().unwrap();
-            self.next_slot = Box::pin(sleep(duration_to_next_slot));
-            // We either have messages to return or need to poll the sleep
-            cx.waker().wake_by_ref();
+        // If there were any messages remaining from the current slot, return them.
+        if let Some(msg) = self.queued_messages.pop_front() {
+            return Poll::Ready(Some(msg));
         }
 
         Poll::Pending
