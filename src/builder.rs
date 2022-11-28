@@ -130,8 +130,9 @@ impl GeneratorBuilder {
             > total_validators
         {
             // There must be enough validators to cover the sync committee.
-            return Err("not enought validators to reach the sync committees size");
+            return Err("not enough validators to reach the sync committees size");
         }
+        /*
         if target_aggregators
             .checked_mul(attestation_subnets)
             .ok_or("total attestation aggregators across the network is too large")?
@@ -152,6 +153,7 @@ impl GeneratorBuilder {
                 "not enough validators to reach the target aggregators in the sync committees",
             );
         }
+        */
 
         let next_slot = slot_clock
             .duration_to_next_slot()
