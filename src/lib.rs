@@ -74,6 +74,15 @@ impl Generator {
         builder::GeneratorBuilder::default()
     }
 
+    /// Time since last slot
+    pub fn time_since_last_slot(&self) -> std::time::Duration {
+        self.slot_clock.slot_duration().saturating_sub(
+            self.slot_clock
+                .duration_to_next_slot()
+                .unwrap_or(std::time::Duration::ZERO),
+        )
+    }
+
     fn queue_slot_msgs(&mut self, current_slot: Slot) {
         for msg_type in MsgType::iter() {
             match msg_type {
