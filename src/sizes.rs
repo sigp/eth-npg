@@ -1,10 +1,10 @@
 use crate::Message;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 
 impl Message {
     // Tested from live mainnet results
     pub fn payload(&self) -> Vec<u8> {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rngs::SmallRng::from_entropy();
         let mut message = match self {
             Message::BeaconBlock { .. } => {
                 let bytes: u32 = rng.gen_range(60_000..80_000);
@@ -30,9 +30,8 @@ impl Message {
         };
 
         // Ranomize the first 8 bits to make sure the message is unique.
-        for index in 0..8 {
-            message[index] = rand::random();
-        }
+        let first_bytes = &mut message[0..8];
+        rng.fill(first_bytes);
 
         message
     }

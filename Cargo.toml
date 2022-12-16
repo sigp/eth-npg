@@ -10,7 +10,7 @@ slot_clock = { git = "https://github.com/divagant-martian/lighthouse", branch = 
 tokio = { version = "1.21.1", features = [ "time", "macros", "rt" ] }
 futures = "0.3.24"
 strum = { version = "0.24", features = ["derive"] }
-rand = "0.8.5"
+rand = { version = "0.8.5", features = ["small_rng"] }
 # 
 [patch]
 [patch.crates-io]
