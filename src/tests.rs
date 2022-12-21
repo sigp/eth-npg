@@ -7,8 +7,8 @@ use slot_clock::Slot;
 #[test]
 fn test_attestations() {
     let test_slot = 0;
-    let slots_per_epoch = 4;
-    let total_validators = 24;
+    let slots_per_epoch = 12;
+    let total_validators = 20000;
     let attestation_subnets = 6;
     let aggregators = 1;
     let sync_subnet_size = 1;
@@ -59,7 +59,9 @@ fn test_attestations() {
         let slot_atts_count: usize = subnet_messages.values().map(|vals| vals.len()).sum();
         assert!(
             slot_atts_count.abs_diff(expected_slot_atts) <= 1,
-            "unexpected number of messages per slot"
+            "unexpected number of messages per slot. Expected {} actual {}",
+            expected_slot_atts,
+            slot_atts_count
         );
     }
     assert_eq!(epoch_attesters.len(), total_validators as usize);

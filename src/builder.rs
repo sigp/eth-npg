@@ -170,7 +170,7 @@ impl GeneratorBuilder {
         // Slot interval
         let interval = tokio::time::interval_at(
             tokio::time::Instant::now() + next_slot,
-            slot_clock.slot_duration(),
+            slot_clock.slot_duration() / 3,
         );
 
         Ok(Generator {
@@ -179,6 +179,7 @@ impl GeneratorBuilder {
             validators,
             queued_messages: Default::default(),
             interval,
+            interval_count: 0,
         })
     }
 }

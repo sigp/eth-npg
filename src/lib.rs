@@ -38,6 +38,8 @@ pub struct Generator {
     queued_messages: VecDeque<Message>,
     /// Slot interval.
     interval: tokio::time::Interval,
+    /// Slot interval count. The interval occurs every 1/3 of a slot. So we keep track where we are
+    interval_count: u8,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -84,6 +86,7 @@ impl Generator {
         )
     }
 
+    // Occurs every slot
     fn queue_slot_msgs(&mut self, current_slot: Slot) {
         for msg_type in MsgType::iter() {
             match msg_type {
@@ -136,6 +139,37 @@ impl Generator {
             }
         }
     }
+
+    // Occurs every 2/3 of a slot
+    fn queue_aggregate_msgs(&mut self, current_slot: Slot) {
+        for msg_type in MsgType::iter() {
+            match msg_type {
+                MsgType::BeaconBlock => {}
+                MsgType::AggregateAndProofAttestation => self.queued_messages.extend(
+                    self.slot_generator
+                        .get_aggregates(current_slot, &self.validators)
+                        .map(
+                            |(aggregator, subnet)| Message::AggregateAndProofAttestation {
+                                aggregator,
+                                subnet,
+                                slot: current_slot,
+                            },
+                        ),
+                ),
+                MsgType::Attestation => {}
+                MsgType::SignedContributionAndProof => self.queued_messages.extend(
+                    self.slot_generator
+                        .get_sync_committee_aggregates(current_slot, &self.validators)
+                        .map(|(validator, subnet)| Message::SignedContributionAndProof {
+                            validator,
+                            subnet,
+                            slot: current_slot,
+                        }),
+                ),
+                MsgType::SyncCommitteeMessage => {}
+            }
+        }
+    }
 }
 
 impl Stream for Generator {
@@ -151,8 +185,16 @@ impl Stream for Generator {
         }
 
         if self.interval.poll_tick(cx).is_ready() {
-            let current_slot = self.slot_clock.now().unwrap();
-            self.queue_slot_msgs(current_slot);
+            self.interval_count += 1;
+            if self.interval_count == 3 {
+                self.interval_count = 0;
+                let current_slot = self.slot_clock.now().expect("Slot exists");
+                self.queue_slot_msgs(current_slot);
+            } else if self.interval_count == 2 {
+                // Aggregates get sent 2/3 of the way through the slot
+                let current_slot = self.slot_clock.now().expect("Slot exists");
+                self.queue_aggregate_msgs(current_slot);
+            }
         }
 
         // If there were any messages remaining from the current slot, return them.
