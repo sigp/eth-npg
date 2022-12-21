@@ -7,7 +7,7 @@ impl Message {
         let mut rng = rand::rngs::SmallRng::from_entropy();
         let mut message = match self {
             Message::BeaconBlock { .. } => {
-                let bytes: u32 = rng.gen_range(60_000..80_000);
+                let bytes: u32 = rng.gen_range(30_000..70_000);
                 vec![0; bytes as usize]
                 // Thread is some random values to make the payloads distinct
             }
