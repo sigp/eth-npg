@@ -33,7 +33,7 @@ impl GeneratorBuilder {
         slot_duration: Duration,
     ) -> &mut Self {
         self.slot_clock = Some(SystemTimeSlotClock::new(
-            Slot::new(genesis_slot as u64),
+            Slot::new(genesis_slot),
             genesis_duration,
             slot_duration,
         ));
@@ -130,8 +130,9 @@ impl GeneratorBuilder {
             > total_validators
         {
             // There must be enough validators to cover the sync committee.
-            return Err("not enought validators to reach the sync committees size");
+            return Err("not enough validators to reach the sync committees size");
         }
+        /*
         if target_aggregators
             .checked_mul(attestation_subnets)
             .ok_or("total attestation aggregators across the network is too large")?
@@ -152,6 +153,7 @@ impl GeneratorBuilder {
                 "not enough validators to reach the target aggregators in the sync committees",
             );
         }
+        */
 
         let next_slot = slot_clock
             .duration_to_next_slot()
@@ -164,12 +166,19 @@ impl GeneratorBuilder {
             target_aggregators,
             total_validators,
         );
+
+        // Slot interval
+        let interval = tokio::time::interval_at(
+            tokio::time::Instant::now() + next_slot,
+            slot_clock.slot_duration(),
+        );
+
         Ok(Generator {
             slot_clock,
             slot_generator,
             validators,
             queued_messages: Default::default(),
-            next_slot: Box::pin(tokio::time::sleep(next_slot)),
+            interval,
         })
     }
 }
